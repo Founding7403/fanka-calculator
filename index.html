@@ -89,16 +89,15 @@
             stroke-width: 2.5;
         }
 
-        /* 余额输入框优化 - 隐藏默认箭头，加宽 */
+        /* 余额输入框优化 */
         .input-balance {
-            width: 140px; /* 加宽以容纳小数 */
+            width: 140px; 
             text-align: center;
             background: transparent;
             border: none;
             padding: 0;
             color: #1F2937;
             font-family: inherit;
-            /* 隐藏浏览器默认的 number input 箭头 */
             -moz-appearance: textfield;
         }
         .input-balance::-webkit-outer-spin-button,
@@ -127,9 +126,9 @@
             height: 6.5rem; 
         }
         
-        /* Emoji 图标大小 */
+        /* Emoji 图标 */
         .emoji-icon {
-            font-size: 2.5rem;
+            font-size: 2rem;
             line-height: 1;
             margin-bottom: 0.35rem;
             filter: drop-shadow(0 2px 3px rgba(0,0,0,0.1));
@@ -199,7 +198,7 @@
     <!-- 顶部极简标题 -->
     <div class="bg-white sticky top-0 z-20 border-b border-gray-200">
         <div class="max-w-md mx-auto h-14 flex items-center justify-center">
-            <h1 class="text-level-2 text-gray-800 tracking-tight">饭卡余额计算器</h1>
+            <h1 class="text-level-1 text-gray-800 tracking-tight">饭卡计算器</h1>
         </div>
     </div>
 
@@ -219,12 +218,10 @@
                     </svg>
                 </button>
                 
-                <div class="flex-1 text-center px-2 flex flex-col items-center justify-center overflow-hidden">
-                    <div class="flex items-baseline justify-center w-full">
-                        <input type="number" id="balance" value="1200.0" step="0.1" class="input-balance text-level-1" oninput="calculate()">
-                        <span class="ml-1 text-level-2 text-gray-500" style="transform: translateY(-2px)">元</span>
-                    </div>
-                    <div class="text-level-3 text-gray-400" style="font-size: 0.75rem;">点击数字修改</div>
+                <!-- 中间数字区域 -->
+                <div class="flex-1 flex items-baseline justify-center">
+                    <input type="number" id="balance" value="1200.0" step="0.1" class="input-balance text-level-1" oninput="calculate()">
+                    <span class="ml-1 text-level-2 text-gray-500" style="transform: translateY(-2px)">元</span>
                 </div>
                 
                 <button class="stepper-btn" onclick="adjustBalance(10)">
@@ -233,6 +230,8 @@
                     </svg>
                 </button>
             </div>
+            <!-- 提示语移到这里 -->
+            <div class="text-center text-level-3 text-gray-400 mt-2" style="font-size: 0.75rem;">点击数字修改</div>
         </div>
 
         <!-- 卡片2：用餐选择 (Emoji版) -->
@@ -244,6 +243,7 @@
             <div class="grid grid-cols-3 gap-3">
                 <!-- 早餐 -->
                 <div class="meal-btn active-breakfast" id="btn-breakfast" onclick="toggleMeal('breakfast')">
+                    <!-- 缩小尺寸，微调间距 -->
                     <span class="emoji-icon">🥛</span>
                     <span class="text-level-2">早餐</span>
                     <span class="text-level-3 opacity-70 mt-0.5">12元</span>
@@ -370,6 +370,13 @@
             dinner: 8
         };
 
+        // 时间阈值 (分钟)
+        const THRESHOLDS = {
+            breakfast: 9 * 60,       // 9:00
+            lunch: 12 * 60 + 30,     // 12:30
+            dinner: 18 * 60 + 30     // 18:30
+        };
+
         const state = {
             meals: { breakfast: true, lunch: true, dinner: true }
         };
@@ -413,8 +420,6 @@
             val += amount;
             if (val < 0) val = 0;
             
-            // 修复浮点数精度问题 (如 1200.10000002)
-            // 先toFixed再转回number去除非必要尾零，或者直接赋值string
             input.value = val.toFixed(1); 
             calculate();
         }
@@ -431,8 +436,11 @@
         }
 
         function calculate() {
-            const startDate = new Date(document.getElementById('start_date').value);
-            const endDate = new Date(document.getElementById('end_date').value);
+            const startDateStr = document.getElementById('start_date').value;
+            const endDateStr = document.getElementById('end_date').value;
+            
+            const startDate = new Date(startDateStr);
+            const endDate = new Date(endDateStr);
             const balance = parseFloat(document.getElementById('balance').value) || 0;
             const holidays = parseInt(document.getElementById('holidays').value) || 0;
             const extras = parseInt(document.getElementById('extras').value) || 0;
@@ -455,11 +463,46 @@
             if (state.meals.lunch) dailyCost += PRICES.lunch;
             if (state.meals.dinner) dailyCost += PRICES.dinner;
 
-            const totalCost = actualDays * dailyCost;
+            let totalCost = actualDays * dailyCost;
+
+            // --- 智能扣除逻辑开始 ---
+            const now = new Date();
+            // 为了比较日期，去掉时间部分
+            const todayStr = now.toISOString().split('T')[0];
+            const isTodayInStart = startDateStr === todayStr;
+            const isTodayInEnd = endDateStr >= todayStr;
+            
+            // 只有当开始日期就是今天，且今天在范围内，才执行智能扣除
+            // 且假设今天不是周末（简单判断，若今天是周末但用户选了开始，通常也不扣，除非加班，这里按标准工作日逻辑）
+            const dayOfWeek = now.getDay();
+            const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+
+            // 如果今天包含在计算范围内，并且今天是工作日（非周末）
+            if (isTodayInStart && !isWeekend) {
+                const currentMinutes = now.getHours() * 60 + now.getMinutes();
+                let deduction = 0;
+
+                // 早餐已过
+                if (state.meals.breakfast && currentMinutes > THRESHOLDS.breakfast) {
+                    deduction += PRICES.breakfast;
+                }
+                // 午餐已过
+                if (state.meals.lunch && currentMinutes > THRESHOLDS.lunch) {
+                    deduction += PRICES.lunch;
+                }
+                // 晚餐已过
+                if (state.meals.dinner && currentMinutes > THRESHOLDS.dinner) {
+                    deduction += PRICES.dinner;
+                }
+                
+                totalCost -= deduction;
+            }
+            // --- 智能扣除逻辑结束 ---
+
+            if (totalCost < 0) totalCost = 0;
             const diff = balance - totalCost;
 
             document.getElementById('total_days').innerText = actualDays;
-            // 精度修正：总支出保留1位小数
             document.getElementById('total_cost').innerText = totalCost.toFixed(1);
 
             const resLabel = document.getElementById('result_label');
@@ -469,7 +512,6 @@
             if (diff >= 0) {
                 resLabel.innerText = "余额剩余";
                 resLabel.className = "text-level-3 mb-0.5 font-bold text-green-600";
-                // 精度修正：余额保留1位小数
                 resValue.innerHTML = `<span class="tracking-tighter text-green-600">${diff.toFixed(1)}</span><span class="text-level-2 font-bold text-gray-400 mb-1 ml-1">元</span>`;
                 
                 let pct = totalCost > 0 ? (totalCost / balance) * 100 : 0;
@@ -478,7 +520,6 @@
             } else {
                 resLabel.innerText = "余额不足 (缺口)";
                 resLabel.className = "text-level-3 mb-0.5 font-bold text-red-500";
-                // 精度修正：缺口保留1位小数
                 resValue.innerHTML = `<span class="tracking-tighter text-red-500">${Math.abs(diff).toFixed(1)}</span><span class="text-level-2 font-bold text-gray-400 mb-1 ml-1">元</span>`;
                 
                 bar.className = "h-full transition-all duration-700 ease-out rounded-full bg-red-500";
