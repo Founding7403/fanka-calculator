@@ -13,7 +13,7 @@
             line-height: 1.5;
             background-color: #F3F4F6;
             color: #1F2937;
-            padding-bottom: 200px; 
+            padding-bottom: 220px; /* 增加底部留白，防止内容被遮挡 */
             -webkit-font-smoothing: antialiased;
         }
 
@@ -76,7 +76,7 @@
             transition: all 0.1s ease;
             cursor: pointer;
             padding: 0;
-            flex-shrink: 0; /* 防止被挤压 */
+            flex-shrink: 0; 
         }
         .stepper-btn:active {
             background-color: #F9FAFB;
@@ -159,16 +159,19 @@
         .meal-btn.inactive .emoji-icon { filter: grayscale(100%) opacity(0.6); }
 
         /* ---------------------------------
-           底部悬浮栏
+           底部悬浮栏 (视觉重构：强突出)
         --------------------------------- */
         .fixed-bar {
             position: fixed;
             bottom: 0; left: 0; right: 0;
-            background: rgba(255, 255, 255, 0.98);
-            border-top: 1px solid rgba(229, 231, 235, 1);
-            padding: 1.25rem 1.5rem;
-            padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
-            box-shadow: 0 -4px 20px rgba(0,0,0,0.05);
+            background: #FFFFFF;
+            /* 顶部大圆角，制造"抽屉"感 */
+            border-top-left-radius: 1.5rem;
+            border-top-right-radius: 1.5rem;
+            /* 强烈的上浮阴影，彻底区隔背景 */
+            box-shadow: 0 -8px 30px rgba(0,0,0,0.12), 0 -2px 10px rgba(0,0,0,0.05);
+            padding: 1.5rem 1.75rem;
+            padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
             z-index: 50;
         }
         
@@ -220,7 +223,7 @@
                 
                 <!-- 中间数字区域 -->
                 <div class="flex-1 flex items-baseline justify-center">
-                    <input type="number" id="balance" value="1200.0" step="0.1" class="input-balance text-level-1" oninput="calculate()">
+                    <input type="number" id="balance" value="1000.0" step="0.1" class="input-balance text-level-1" oninput="calculate()">
                     <span class="ml-1 text-level-2 text-gray-500" style="transform: translateY(-2px)">元</span>
                 </div>
                 
@@ -230,7 +233,6 @@
                     </svg>
                 </button>
             </div>
-            <!-- 提示语移到这里 -->
             <div class="text-center text-level-3 text-gray-400 mt-2" style="font-size: 0.75rem;">点击数字修改</div>
         </div>
 
@@ -243,7 +245,6 @@
             <div class="grid grid-cols-3 gap-3">
                 <!-- 早餐 -->
                 <div class="meal-btn active-breakfast" id="btn-breakfast" onclick="toggleMeal('breakfast')">
-                    <!-- 缩小尺寸，微调间距 -->
                     <span class="emoji-icon">🥛</span>
                     <span class="text-level-2">早餐</span>
                     <span class="text-level-3 opacity-70 mt-0.5">12元</span>
@@ -381,7 +382,57 @@
             meals: { breakfast: true, lunch: true, dinner: true }
         };
 
+        // 保存设置到 localStorage (只保存余额和用餐选项)
+        function saveSettings() {
+            const settings = {
+                balance: document.getElementById('balance').value,
+                meals: state.meals
+            };
+            try {
+                localStorage.setItem('meal_card_settings', JSON.stringify(settings));
+            } catch (e) {
+                // 忽略存储错误
+            }
+        }
+
+        // 从 localStorage 加载设置
+        function loadSettings() {
+            try {
+                const saved = localStorage.getItem('meal_card_settings');
+                if (saved) {
+                    const settings = JSON.parse(saved);
+                    
+                    if (settings.balance !== undefined) document.getElementById('balance').value = settings.balance;
+                    
+                    if (settings.meals) {
+                        state.meals = settings.meals;
+                        ['breakfast', 'lunch', 'dinner'].forEach(type => {
+                            const btn = document.getElementById(`btn-${type}`);
+                            const activeClass = `active-${type}`;
+                            const inactiveClass = 'inactive';
+                            
+                            if (state.meals[type]) {
+                                btn.classList.add(activeClass);
+                                btn.classList.remove(inactiveClass);
+                            } else {
+                                btn.classList.remove(activeClass);
+                                btn.classList.add(inactiveClass);
+                            }
+                        });
+                    }
+                    return true;
+                }
+            } catch (e) {
+                console.error("加载配置失败", e);
+            }
+            return false;
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
+            // 加载余额和偏好
+            loadSettings();
+
+            // 无论是否加载了配置，都强制初始化日期为当前月
             const now = new Date();
             const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
             
@@ -467,30 +518,23 @@
 
             // --- 智能扣除逻辑开始 ---
             const now = new Date();
-            // 为了比较日期，去掉时间部分
             const todayStr = now.toISOString().split('T')[0];
             const isTodayInStart = startDateStr === todayStr;
             const isTodayInEnd = endDateStr >= todayStr;
             
-            // 只有当开始日期就是今天，且今天在范围内，才执行智能扣除
-            // 且假设今天不是周末（简单判断，若今天是周末但用户选了开始，通常也不扣，除非加班，这里按标准工作日逻辑）
             const dayOfWeek = now.getDay();
             const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
 
-            // 如果今天包含在计算范围内，并且今天是工作日（非周末）
             if (isTodayInStart && !isWeekend) {
                 const currentMinutes = now.getHours() * 60 + now.getMinutes();
                 let deduction = 0;
 
-                // 早餐已过
                 if (state.meals.breakfast && currentMinutes > THRESHOLDS.breakfast) {
                     deduction += PRICES.breakfast;
                 }
-                // 午餐已过
                 if (state.meals.lunch && currentMinutes > THRESHOLDS.lunch) {
                     deduction += PRICES.lunch;
                 }
-                // 晚餐已过
                 if (state.meals.dinner && currentMinutes > THRESHOLDS.dinner) {
                     deduction += PRICES.dinner;
                 }
@@ -525,6 +569,8 @@
                 bar.className = "h-full transition-all duration-700 ease-out rounded-full bg-red-500";
                 bar.style.width = "100%";
             }
+
+            saveSettings();
         }
     </script>
 </body>
