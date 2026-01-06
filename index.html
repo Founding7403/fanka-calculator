@@ -13,13 +13,13 @@
             line-height: 1.5;
             background-color: #F3F4F6;
             color: #1F2937;
-            padding-bottom: 220px; /* 增加底部留白，防止内容被遮挡 */
+            padding-bottom: 220px; 
             -webkit-font-smoothing: antialiased;
         }
 
         /* 字体层级系统 */
-        .text-level-1 { font-size: 2rem; line-height: 2.25rem; font-weight: 900; } /* 大数据 */
-        .text-level-2 { font-size: 1.05rem; font-weight: 700; } /* 标题/按钮 */
+        .text-level-1 { font-size: 2rem; line-height: 2.25rem; font-weight: 900; } 
+        .text-level-2 { font-size: 1.05rem; font-weight: 700; } 
         .text-level-3 { font-size: 0.85rem; color: #6B7280; font-weight: 500; } 
 
         /* 卡片基础 */
@@ -89,7 +89,7 @@
             stroke-width: 2.5;
         }
 
-        /* 余额输入框优化 */
+        /* 余额输入框 */
         .input-balance {
             width: 140px; 
             text-align: center;
@@ -159,16 +159,14 @@
         .meal-btn.inactive .emoji-icon { filter: grayscale(100%) opacity(0.6); }
 
         /* ---------------------------------
-           底部悬浮栏 (视觉重构：强突出)
+           底部悬浮栏
         --------------------------------- */
         .fixed-bar {
             position: fixed;
             bottom: 0; left: 0; right: 0;
             background: #FFFFFF;
-            /* 顶部大圆角，制造"抽屉"感 */
             border-top-left-radius: 1.5rem;
             border-top-right-radius: 1.5rem;
-            /* 强烈的上浮阴影，彻底区隔背景 */
             box-shadow: 0 -8px 30px rgba(0,0,0,0.12), 0 -2px 10px rgba(0,0,0,0.05);
             padding: 1.5rem 1.75rem;
             padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
@@ -223,7 +221,7 @@
                 
                 <!-- 中间数字区域 -->
                 <div class="flex-1 flex items-baseline justify-center">
-                    <input type="number" id="balance" value="1000.0" step="0.1" class="input-balance text-level-1" oninput="calculate()">
+                    <input type="number" id="balance" value="1200.0" step="0.1" class="input-balance text-level-1" oninput="calculate()">
                     <span class="ml-1 text-level-2 text-gray-500" style="transform: translateY(-2px)">元</span>
                 </div>
                 
@@ -357,9 +355,10 @@
                 </div>
             </div>
             
-            <!-- 进度条 -->
-            <div class="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
-                <div id="balance_bar" class="h-full transition-all duration-700 ease-out rounded-full bg-blue-500" style="width: 0%"></div>
+            <!-- 进度条：底色为绿（余额），上层为红（支出） -->
+            <!-- h-3 对应约 12px，比之前的 h-2.5 (10px) 粗了约 20% -->
+            <div class="w-full bg-green-500 rounded-full h-3 overflow-hidden relative">
+                <div id="balance_bar" class="h-full transition-all duration-700 ease-out rounded-full bg-red-500" style="width: 0%"></div>
             </div>
         </div>
     </div>
@@ -429,7 +428,6 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            // 加载余额和偏好
             loadSettings();
 
             // 无论是否加载了配置，都强制初始化日期为当前月
@@ -516,7 +514,7 @@
 
             let totalCost = actualDays * dailyCost;
 
-            // --- 智能扣除逻辑开始 ---
+            // --- 智能扣除逻辑 ---
             const now = new Date();
             const todayStr = now.toISOString().split('T')[0];
             const isTodayInStart = startDateStr === todayStr;
@@ -541,7 +539,6 @@
                 
                 totalCost -= deduction;
             }
-            // --- 智能扣除逻辑结束 ---
 
             if (totalCost < 0) totalCost = 0;
             const diff = balance - totalCost;
@@ -558,15 +555,22 @@
                 resLabel.className = "text-level-3 mb-0.5 font-bold text-green-600";
                 resValue.innerHTML = `<span class="tracking-tighter text-green-600">${diff.toFixed(1)}</span><span class="text-level-2 font-bold text-gray-400 mb-1 ml-1">元</span>`;
                 
-                let pct = totalCost > 0 ? (totalCost / balance) * 100 : 0;
-                bar.className = "h-full transition-all duration-700 ease-out rounded-full bg-green-500";
+                // 进度条逻辑：底色是绿（balance），红条显示支出占比
+                let pct = 0;
+                if (balance > 0) {
+                    pct = (totalCost / balance) * 100;
+                } else if (totalCost > 0) {
+                    pct = 100;
+                }
+                if (pct > 100) pct = 100;
+                
                 bar.style.width = pct + "%";
             } else {
                 resLabel.innerText = "余额不足 (缺口)";
                 resLabel.className = "text-level-3 mb-0.5 font-bold text-red-500";
                 resValue.innerHTML = `<span class="tracking-tighter text-red-500">${Math.abs(diff).toFixed(1)}</span><span class="text-level-2 font-bold text-gray-400 mb-1 ml-1">元</span>`;
                 
-                bar.className = "h-full transition-all duration-700 ease-out rounded-full bg-red-500";
+                // 余额不足时，红条拉满
                 bar.style.width = "100%";
             }
 
